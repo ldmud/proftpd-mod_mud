@@ -1,7 +1,7 @@
 /*
  * mod_mud.c: mud-user login&file access handling
  *
- * @author Woody@SilberLand
+ * @author Gnomi@UNItopia
  * @author Tiamak@MorgenGrauen
  * @author Matthias L. Jugel, MorgenGrauen
  * @author Peng@FinalFrontier (original)
@@ -41,8 +41,6 @@
 #define MODE_LIST          4
 
 
-//extern int core_display_file(const char *,const char *);
-
 extern module auth_module;
 static int    udp_socket;           /* Our udp socket, -1 if inactive */
 static long   udp_seqnumber;        /* The message id-number */
@@ -71,7 +69,6 @@ static int mud_setup_environment( pool *, char *, char * );
 static int mud_verify_access( char *, int );
 static char *mud_getdir( cmd_rec * );
 
-MODRET mud_set_mudaddr( cmd_rec * );
 MODRET mud_set_udpport( cmd_rec * );
 MODRET mud_set_pathmudlib( cmd_rec * );
 MODRET pw_auth( cmd_rec * );
@@ -85,22 +82,20 @@ static int mud_init()
     struct group *grp = NULL;
     struct passwd *pw = NULL;
     char *mudgroupname = NULL;
-    config_rec *c = NULL;
-    int *tmp;
+    void *ptr;
 
     muduser = (char *)get_param_ptr( main_server->conf, "UserName", FALSE );
     mudgroupname = (char *)get_param_ptr( main_server->conf, "GroupName",
                                           FALSE );
-    tmp = get_param_ptr( main_server->conf, "UDPPort", FALSE );
-    udp_portno = *tmp;
-    pr_log_debug( DEBUG9, "mod_mud::mud_init: UDPPort is %d", udp_portno);
-
-    if ( udp_portno < 1024 ){
+    ptr = get_param_ptr( main_server->conf, "UDPPort", FALSE );
+  
+    if ( !ptr ){
         pr_log_debug( DEBUG1, "mod_mud: UDPPort must be set.");
         end_login(1);
         return 0;
     }
-
+    udp_portno=(int)ptr;
+  
     if ( (pw = getpwnam(muduser)) == NULL){
         endpwent();
         pr_response_add( R_451, "Internal server error, giving up." ); 
@@ -135,22 +130,7 @@ static int mud_init()
     
     memset( (char *)&gd_addr, 0, sizeof(gd_addr) );
     gd_addr.sin_family = AF_INET;
-    // gd_addr.sin_addr = session.c->local_addr->na_addr.v4.sin_addr;
-
-    if ((c = find_config(main_server->conf, CONF_PARAM, "MudAddress",
-        FALSE)) != NULL)
-    {
-      char *addr;
-      addr = (char *) pr_netaddr_get_ipstr(c->argv[0]);
-      pr_log_debug( DEBUG9, "mod_mud: MUD running on address %s", addr);
-      pr_inet_pton(AF_INET, addr, &gd_addr.sin_addr);
-    }
-    else
-    {
-      pr_log_debug( DEBUG9, "mod_mud: MUD running on localhost");
-      pr_inet_pton(AF_INET, "127.0.0.1", &gd_addr.sin_addr);
-    }
-
+    gd_addr.sin_addr.s_addr = htonl(0x7f000001);
     gd_addr.sin_port = htons(udp_portno);
     udp_seqnumber = 0;
 
@@ -180,8 +160,7 @@ static char *sgetsave(char *s)
 
 static int get_msg ( char *type, char **result, int quick )
 {
-    int retries, discard, rc, tlen;
-    socklen_t fromlen;
+    int retries, discard, rc, fromlen, tlen;
     struct timeval timeout;
     fd_set readfds;
     struct sockaddr_in from_addr;
@@ -637,7 +616,25 @@ static char *mud_getdir( cmd_rec *cmd )
     if ( cmd->argc == 1 )
         dir = ".";
     else
+    {
         dir = cmd->arg;
+	
+	while (isspace(*dir))
+	    dir++;
+	
+	while (*dir == '-')
+	{
+	    /* Ignore any options. */
+	    while (*dir && !isspace(*dir))
+		dir++;
+	    
+	    while (isspace(*dir))
+		dir++;
+	}
+	
+	if(!*dir)
+	    dir = ".";
+    }
 
     if ( !strncmp( dir, "+", 1 ) ){
         strncpy( target, "/d/", 4 );
@@ -647,7 +644,7 @@ static char *mud_getdir( cmd_rec *cmd )
         cmd->arg = target;
     }
     else if ( !strncmp( dir, "~/", 2 ) || !strncmp( dir, "~", 2) ){
-        strncpy( target, "/players/", 10 );
+        strncpy( target, "/w/", 10 );
         user = (char*)get_param_ptr( cmd->server->conf, C_USER, FALSE );
         strcat( target, user );
         strncat( target, dir+1, MAXPATHLEN-strlen(user)-8 );
@@ -656,7 +653,7 @@ static char *mud_getdir( cmd_rec *cmd )
         cmd->arg = target;
     }
     else if ( !strncmp( dir, "~", 1 ) ){
-        strncpy( target, "/players/", 10 );
+        strncpy( target, "/w/", 10 );
         strncat( target, dir+1, MAXPATHLEN-8 );
         target[MAXPATHLEN-1] = 0;
         dir = target;
@@ -670,34 +667,10 @@ static char *mud_getdir( cmd_rec *cmd )
 }
 
 
-MODRET mud_set_mudaddr(cmd_rec *cmd)
-{
-  config_rec *c = NULL;
-  pr_netaddr_t *mud_addr = NULL;
-
-  CHECK_ARGS( cmd, 1 );
-  CHECK_CONF( cmd, CONF_ROOT|CONF_GLOBAL );
-
-  /* We can only send UDP packets to one address, so we don't care if the
-   * given name might map to multiple addresses.
-   */
-  mud_addr = pr_netaddr_get_addr(cmd->server->pool, cmd->argv[1], NULL);
-  if (mud_addr == NULL)
-    return PR_ERROR_MSG(cmd, NULL, pstrcat(cmd->tmp_pool, cmd->argv[0],
-      ": unable to resolve \"", cmd->argv[1], "\"", NULL));
-
-  c = add_config_param(cmd->argv[0], 2, (void *) mud_addr, NULL);
-  c->argv[1] = pstrdup(c->pool, cmd->argv[1]);
-
-  return PR_HANDLED(cmd);
-}
-
-
 MODRET mud_set_udpport( cmd_rec *cmd )
 {
     int _portno;
-    config_rec *c = NULL;
-
+    
     CHECK_ARGS( cmd, 1 );
     CHECK_CONF( cmd, CONF_ROOT|CONF_GLOBAL );
     _portno = atoi(cmd->argv[1]);
@@ -705,12 +678,10 @@ MODRET mud_set_udpport( cmd_rec *cmd )
     if ( _portno < 1024 )
         CONF_ERROR( cmd, "UDPPort must be greater than 1024." );
 
-    c = add_config_param_str( "UDPPort", 1, NULL );
-    c->argv[0] = pcalloc(c->pool, sizeof(int));
-    *((int *) c->argv[0]) = _portno;
+    add_config_param( "UDPPort", 1, (void *)_portno );
     udp_portno = _portno;
-
-    return PR_HANDLED(cmd);
+    
+    return HANDLED(cmd);
 }
 
 
@@ -740,8 +711,35 @@ MODRET mud_set_pathmudlib( cmd_rec *cmd )
 
     add_config_param_str( "PathMudlib", 1, dir );
 
-    return PR_HANDLED(cmd);
+    return HANDLED(cmd);
 }
+
+MODRET mud_set_muduser( cmd_rec *cmd )
+{	char *user;
+
+    CHECK_CONF( cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL );
+    CHECK_ARGS( cmd, 1 );
+
+    user = cmd->argv[1];
+
+    add_config_param_str( "MudUserName", 1, user );
+
+    return HANDLED(cmd);
+}
+
+MODRET mud_set_mudgroup( cmd_rec *cmd )
+{	char *group;
+
+    CHECK_CONF( cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL );
+    CHECK_ARGS( cmd, 1 );
+
+    group = cmd->argv[1];
+
+    add_config_param_str( "MudGroupName", 1, group );
+
+    return HANDLED(cmd);
+}
+
 
 
 MODRET pw_auth( cmd_rec *cmd )
@@ -755,24 +753,24 @@ MODRET pw_auth( cmd_rec *cmd )
 
     if ( !(mud_login & MU_AUTH_INTERNAL) )
         /* shortcut */
-        return PR_DECLINED(cmd);
+        return DECLINED(cmd);
  
     if ( !send_msg( &result, "PASS", (char *)name, (char *)clearpw, NULL ) ){
         if ( !strncasecmp( result, "OK", 2 ) ){
             free(result);
             /* mud-user identified */
             mud_login |= MU_AUTHENTICATED;
-            return PR_HANDLED(cmd);
+            return HANDLED(cmd);
         }
             
         pr_log_debug( DEBUG1, "mod_mud: auth pw(%s) rejected by udp", name );
         free(result);
-        return PR_DECLINED(cmd);
+        return DECLINED(cmd);
     }
     
     pr_log_debug( DEBUG1, "mod_mud: pw_auth(): no udp connection" );
 
-    return PR_DECLINED(cmd);
+    return DECLINED(cmd);
 }
 
 
@@ -780,12 +778,12 @@ MODRET mud_cmd_pass( cmd_rec *cmd )
 {
     char *display = NULL;
     char *user, *grantmsg;
+    char *ptr;
     int res = 0;
-    unsigned char *authenticated;
 
-    authenticated = get_param_ptr( cmd->server->conf, "authenticated", FALSE);
-    if ( authenticated && *authenticated == TRUE )
-        return PR_ERROR_MSG(cmd, R_503, _("You are already logged in"));
+    ptr = (char*)get_param_ptr( cmd->server->conf, "authenticated", FALSE);
+    if ( ptr && *ptr == 1 )
+        return ERROR_MSG( cmd, R_503, "You are already logged in!" );
 
     user = (char*)get_param_ptr( cmd->server->conf, C_USER, FALSE );
 
@@ -802,8 +800,7 @@ MODRET mud_cmd_pass( cmd_rec *cmd )
 	c = add_config_param_set(&cmd->server->conf, "authenticated", 1, NULL);
 	c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
 	*((unsigned char *) c->argv[0]) = TRUE;
-
-        /*
+	   
         display = (char*)get_param_ptr( cmd->server->conf, "DisplayLogin",
                                         FALSE );
 
@@ -818,15 +815,14 @@ MODRET mud_cmd_pass( cmd_rec *cmd )
         } 
         else
             pr_response_add( R_230, "User %s logged in.", user );
-        */
-
-        return PR_HANDLED(cmd);
+  
+        return HANDLED(cmd);
     }
 
     /* user is not a mud-user. try external identification */
     mud_login &= ~MU_AUTH_INTERNAL;
     
-    return PR_DECLINED(cmd);
+    return DECLINED(cmd);
 }
 
 
@@ -836,7 +832,7 @@ MODRET mud_cmd_read( cmd_rec *cmd )
     
     if ( !(mud_login & MU_AUTHENTICATED) )
         /* not our job */
-        return PR_DECLINED(cmd);
+        return DECLINED(cmd);
     
     pr_log_debug( DEBUG5, "mod_mud: mud_cmd_read" );
 
@@ -848,7 +844,7 @@ MODRET mud_cmd_read( cmd_rec *cmd )
     if ( !mud_verify_access(dir, MODE_READ) )
         return ERROR(cmd);
   
-    return PR_DECLINED(cmd);
+    return DECLINED(cmd);
 }
 
 
@@ -858,7 +854,7 @@ MODRET mud_cmd_write( cmd_rec *cmd )
 
     if ( !(mud_login & MU_AUTHENTICATED) )
         /* not our job */
-        return PR_DECLINED(cmd);
+        return DECLINED(cmd);
     
     pr_log_debug( DEBUG5, "mod_mud: mud_cmd_write" );
 
@@ -870,7 +866,7 @@ MODRET mud_cmd_write( cmd_rec *cmd )
     if ( !mud_verify_access(dir, MODE_WRITE) )
         return ERROR(cmd);
   
-    return PR_DECLINED(cmd);
+    return DECLINED(cmd);
 }
 
 
@@ -880,7 +876,7 @@ MODRET mud_cmd_list( cmd_rec *cmd )
 
     if ( !(mud_login & MU_AUTHENTICATED) )
         /* not our job */
-        return PR_DECLINED(cmd);
+        return DECLINED(cmd);
     
     pr_log_debug( DEBUG5, "mod_mud: mud_cmd_list" );
 
@@ -892,13 +888,14 @@ MODRET mud_cmd_list( cmd_rec *cmd )
     if ( !mud_verify_access(dir, MODE_LIST) )
         return ERROR(cmd);
   
-    return PR_DECLINED(cmd);
+    return DECLINED(cmd);
 }
 
 
-static conftable mud_conftab[] = {
+static conftable mud_config[] = {
+    { "UserName", mud_set_muduser, NULL },
+    { "GroupName", mud_set_mudgroup, NULL },
     { "PathMudlib", mud_set_pathmudlib, NULL },
-    { "MudAddress", mud_set_mudaddr,    NULL },
     { "UDPPortno",  mud_set_udpport,    NULL },
     { NULL,         NULL,               NULL }
 };
@@ -910,7 +907,7 @@ static authtable mud_auth[] = {
 };
 
 
-cmdtable mud_cmdtab[] = {
+cmdtable mud_commands[] = {
     { CMD,     C_PASS,  G_NONE,  mud_cmd_pass,   FALSE, FALSE, CL_AUTH },
     { PRE_CMD, C_NLST,  G_DIRS,  mud_cmd_list,   TRUE,  FALSE, CL_AUTH },
     { PRE_CMD, C_LIST,  G_DIRS,  mud_cmd_list,   TRUE,  FALSE, CL_AUTH },
@@ -939,8 +936,8 @@ module mud_module = {
     NULL, NULL,     /* Always NULL */
     0x20,           /* API Version 2.0 */
     "mud",
-    mud_conftab,    /* Configuration directive table */
-    mud_cmdtab,     /* Command handler */
+    mud_config,     /* Configuration directive table */
+    mud_commands,   /* Command handler */
     mud_auth,       /* Authentication handler */
     NULL, mud_init  /* Initialization function */
 };
