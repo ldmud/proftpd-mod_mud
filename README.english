@@ -1,0 +1,34 @@
+ProFTPD-Module for MUDs
+=======================
+
+Installation
+------------
+
+1. Get the latest Version of ProFtpd from www.proftpd.org
+
+2. Unpack the archive
+
+3. Copy our files into the ProFtpd-directory:
+
+   include/mud.h     -> proftpd-???/include/mud.h
+   modules/mud_mod.c -> proftpd-???/modules/mud_mod.c
+
+4. Configure ProFtpd:
+
+   ./configure --with-modules=mod_mud
+   or
+   ./configure --with-modules=mod_mud:mod_linuxprivs (*)
+
+5. Type 'make'
+
+6. Copy the proftpd binary to a place you like
+
+7. Copy the file 'proftpd.conf' to /etc/ and customize it
+
+8. Now execute proftpd. If anything goes wrong, try to start it
+   with '-d5' and take a look at your system logfiles.
+
+
+(*) The module 'mod_linuxprivs' is not necessary for ProFtpd but it is a
+    security enhancement. It can be found in the directory 'contrib' of
+    ProFtpd's archive and works with linux 2.1.104 and above.

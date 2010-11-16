@@ -1,0 +1,58 @@
+ProFTPD Modul fuer MUDs
+=======================
+
+In der vorliegenden Version 1.6 wurde das Modul wurde mit ProFTPD 
+Version 1.3.2 getestet. Als Laufzeitumgebung diente ein Ubuntu 8.04 LTS
+Server Edition x86-64 und das Silberland (im Moment noch LPMud-basiert,
+aber auch mit dem LDMud-basierten Testmud gab es keine Probleme), das
+Modul kompiliert ohne Warnings.
+
+Letzte Aenderungen:
+- Neue Konfigurationsoption "MudAddress" (Default: 127.0.0.1)
+  legt fest, auf welchem Host der Gamedriver laeuft (fuer UDP Kommunikation)
+
+TODO:
+- Callback Funktionen fuer User/Group Infos
+- Code-Verifikation
+
+Letzter Autor:
+  Woody@Silberland (Andres Cvitkovich, ac@zwerg.at)
+
+Weitere Autoren/Mithelfer, soweit bekannt:
+  Peng@Finalfrontier
+  Hate@Morgengrauen
+  Tiamak@Morgengrauen
+  Rumata@Morgengrauen
+  Gnomi@UNItopia
+
+
+Installation
+------------
+
+1. Eine aktuelle Source Distribution von www.proftpd.org holen
+
+2. Auspacken der original Sourcen.
+
+3. Die Dateien aus unserem Paket ins Verzeichnis von proftpd kopieren:
+
+   include/mud.h     -> proftpd-???/include/mud.h
+   modules/mud_mod.c -> proftpd-???/modules/mud_mod.c
+
+4. ProFTPD konfigurieren:
+
+   ./configure --with-modules=mod_mud
+
+5. 'make'
+
+6. proftpd Binary irgendwohin installieren
+
+7. proftpd.conf nach /etc/ kopieren und anpassen!
+
+8. proftpd starten, wenn was nicht geht mit -d5 und in den
+   Systemlogfiles nach Fehlern suchen. 
+   
+9. Zum debuggen empfiehlt es sich, configure mit der Option
+      --enable-devel=coredump:nodaemon:nofork 
+   zu starten und proftpd per hand zu starten:
+   # proftpd -d5 -n -c <path to proftp.config>
+
