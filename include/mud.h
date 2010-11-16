@@ -2,14 +2,17 @@
 #define _MUD_H_ 1
 
 /*
- * Configuration for mud module for proftpd.
+ * mod_mud.c: mud-user login&file access handling
+ * Bas
+ * @author Wolfgang Hamann, wolfgang@blitzstrahl
  *
  * @author Tiamak@MorgenGrauen
  * @author Matthias L. Jugel, MorgenGrauen
  * @author Peng@FinalFrontier (original)
  *
- * $Id: mud.h,v 1.1.1.1 1999/08/27 17:54:59 mud Exp $
+ * $Id: mod_mud.c,v 1.4 Son Jun 22 00:50:14 CEST 2003 mud Exp $
  */
+
 
 #include <pwd.h>
 #include <netinet/in.h>
